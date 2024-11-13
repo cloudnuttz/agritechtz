@@ -1,0 +1,82 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+env/
+venv/
+ENV/
+*.env
+
+# FastAPI configuration and secrets
+*.env
+*.env.*
+*.secret
+.secret/
+
+# pytest cache
+.pytest_cache/
+.tox/
+.nox/
+
+# Test coverage reports
+.coverage
+coverage.xml
+htmlcov/
+*.cover
+.hypothesis/
+.cache
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# pytype static type checker
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# VS Code settings
+.vscode/
+*.code-workspace
+
+# PyCharm settings
+.idea/
+
+# Logs
+logs/
+*.log
+
+# Local database
+*.sqlite3
+
+# Archives
+*.zip
+*.tar
+*.bzip
+*.gz
+
+# macOS and Linux
+.DS_Store
+*~
+
+# Temporary files
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Optional: ignore compiled assets
+staticfiles/
+node_modules/
+dist/

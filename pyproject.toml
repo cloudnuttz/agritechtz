@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "agritechtz"
+version = "0.1.0"
+description = ""
+authors = ["Moses Kabungo <mose.kabungo@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+bs4 = "^0.0.2"
+pypdf2 = "^3.0.1"
+pandas = "^2.2.3"
+requests = "^2.32.3"
+ipykernel = "^6.29.5"
+sqlalchemy = "^2.0.36"
+asyncpg = "^0.30.0"
+pydantic = "^2.9.2"
+pydantic-settings = "^2.6.1"
+httpx = "^0.27.2"
+fastapi = "^0.115.4"
+fastapi-filter = "^2.0.0"
+fastapi-pagination = "^0.12.31"
+uvicorn = "^0.32.0"
+apscheduler = "^3.10.4"
+gunicorn = "^23.0.0"
+alembic = "^1.14.0"
+python-dotenv = "^1.0.1"
+psycopg2-binary = "^2.9.10"
+psycopg2 = "^2.9.10"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,49 @@
+services:
+  api:
+    image: cloudnut/agritechtz:latest
+    container_name: agritechtz_api
+    ports:
+      - '8000:8000'
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      - migrate
+    command: >
+      sh -c "/app/wait-for-it.sh db:5432 -- gunicorn agritechtz.app:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
+
+  migrate:
+    image: cloudnut/agritechtz:latest
+    depends_on:
+      - db
+    command: >
+      sh -c "/app/wait-for-it.sh db:5432 -- alembic upgrade head"
+    environment:
+      DATABASE_SYNC_URL: ${DATABASE_SYNC_URL}
+    volumes:
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+
+  scheduler:
+    image: cloudnut/agritechtz:latest
+    container_name: agritechtz_scheduler
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      - migrate
+    command: >
+      sh -c "./wait-for-it.sh db:5432 -- python -m agritechtz.scheduler"
+
+  db:
+    image: postgres:13-alpine
+    container_name: agritechtz_db
+    environment:
+      - POSTGRES_USER=${DATABASE_USER}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      - POSTGRES_DB=${DATABASE_NAME}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+
+volumes:
+  db_data:
