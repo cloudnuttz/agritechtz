@@ -1,5 +1,6 @@
 """Harvest Module"""
 
+import difflib
 import os
 import tempfile
 import re
@@ -12,7 +13,7 @@ from bs4 import BeautifulSoup
 import httpx
 import numpy as np
 import pandas as pd
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 from agritechtz.constants import (
     CROPS_COLUMNS,
@@ -21,12 +22,24 @@ from agritechtz.constants import (
     PAGES_PATTERN,
     PDF_PATTERN,
     REGIONAL_PATTERN,
+    TZ_REGIONS,
 )
 from agritechtz.logger import logger
 
 
+pd.set_option("future.no_silent_downcasting", True)
+
+
 class CropPricesPDFParser:
     """Class to extract text and convert data from PDFs into structured data (DataFrame)."""
+
+    def standardize_region(self, region: str, regions: List[str]):
+        """Standardize region names by fixing naming issues from the source"""
+        close_matches = difflib.get_close_matches(region, regions, n=1, cutoff=0.6)
+
+        if len(close_matches) == 0:
+            raise ValueError(f"Could not find region: {region} from the list.")
+        return close_matches[0]
 
     def extract_text_from_pdf(self, pdf_path: str) -> str:
         """Extracts text from all pages in a PDF file.
@@ -41,6 +54,38 @@ class CropPricesPDFParser:
         text = "".join(page.extract_text() for page in pdf_reader.pages)
         return text
 
+    def match_and_clean_text(self, text: str, pattern: re.Pattern):
+        """
+        Matches groups from the input text using a specified regex pattern, standardizes region
+        names, and returns a cleaned list of matched groups.
+
+        Args:
+            text (str): The extracted text content from the PDF document.
+            pattern (re.Pattern): A regular expression pattern for matching relevant data within
+            the text.
+
+        Returns:
+            List[Tuple]: A list of tuples, where each tuple contains matched data with standardized
+            region names as the first element.
+        """
+        # Find all matching groups in the text using the provided regex pattern.
+        # This returns a list of tuples where each tuple represents a row of matched data.
+        rows = pattern.findall(text)
+
+        # Iterate over each row of matched data to standardize the region name.
+        for i, row in enumerate(rows):
+            # Check if the row contains at least one element (the region name).
+            if len(row) > 0:
+                # Extract and standardize the first element as the region name.
+                region = self.standardize_region(row[0], TZ_REGIONS)
+
+                # Update the current row by replacing the original region with the standardized one,
+                # while keeping the remaining elements in the tuple unchanged.
+                rows[i] = (region,) + row[1:]
+
+        # Return the list of standardized and cleaned rows.
+        return rows
+
     def parse_dataframe(
         self, downloaded_file_path: str, source_file_path: str
     ) -> pd.DataFrame:
@@ -53,25 +98,28 @@ class CropPricesPDFParser:
             pd.DataFrame: Structured data with each row representing a region's crop prices.
         """
         corpus = self.extract_text_from_pdf(downloaded_file_path)
-        rows = REGIONAL_PATTERN.findall(corpus)
+        rows = self.match_and_clean_text(corpus, REGIONAL_PATTERN)
+
+        # Create the dataframe from the matched groups
         df = pd.DataFrame(rows, columns=CROPS_COLUMNS)
 
         # Extract and add the date column from the PDF content
-        date = self._extract_date_from_file_path(source_file_path)
+        date = self.extract_date_from_file_path(source_file_path)
         print(date)
         df.insert(0, "Date", pd.to_datetime(date, dayfirst=True, format="%d %B %Y"))
 
         # Convert numeric columns, handling missing values and commas
         min_max_columns = df.columns[df.columns.str.contains("Min|Max")]
-        df[min_max_columns] = (
-            df[min_max_columns]
-            .replace({"NA": np.nan, ",": ""}, regex=True)
-            .apply(pd.to_numeric, errors="coerce")
+        df[min_max_columns] = df[min_max_columns].replace(
+            {"NA": np.nan, ",": ""}, regex=True
         )
+        df[min_max_columns] = df[min_max_columns].apply(pd.to_numeric, errors="coerce")
+        df[min_max_columns] = df[min_max_columns].astype(float)
 
         return df
 
-    def _extract_date_from_file_path(self, file_path: str) -> str:
+    def extract_date_from_file_path(self, file_path: str) -> str:
+        """Extract date from the given file path"""
         logger.debug(file_path)
 
         # Define possible date patterns to search
@@ -86,11 +134,11 @@ class CropPricesPDFParser:
                     day, month = (
                         (first, second) if pattern == DATE_PATTERN else (second, first)
                     )
-                    return f"{day} {self._standardize_month(month)} {year}"
+                    return f"{day} {self.standardize_month(month)} {year}"
 
         raise ValueError("Date not found in the PDF corpus.")
 
-    def _standardize_month(self, month: str) -> str:
+    def standardize_month(self, month: str) -> str:
         replacements = {
             r"\bAgosti\b": "August",
             r"\bMachi\b": "March",
@@ -165,24 +213,28 @@ class Paginator:
         ]
         return pdf_links
 
-    def get_next_page(self, current_page: int, page_links: List[dict]) -> int | None:
-        """Finds and returns the next page number based on navigation patterns.
+    def get_next_page(self, current_page, links):
+        """
+        Given the current page and list of links, return the next page number.
 
         Args:
-            current_page (int): Current page number.
-            page_links (List[dict]): List of links on a page.
+            current_page (int): The current page number.
+            links (list): A list of page links, each a dictionary with 'href' as a key.
 
         Returns:
-            int | None: Next page number if found; otherwise, None.
+            int: The next page number, or None if no next page.
         """
-        nav_links = [
-            int(match[0][1])
-            for link in page_links
-            if (match := PAGES_PATTERN.findall(link["href"]))
-        ]
-        # Select the smallest page number greater than the current page
-        next_page = min((pg for pg in nav_links if pg > current_page), default=None)
-        return next_page
+        # Regex to extract page number from href, e.g., '?page=2'
+        page_pattern = PAGES_PATTERN
+
+        # Iterate through links to find the next page number
+        for link in links:
+            match = page_pattern.search(link["href"])
+            if match:
+                next_page = int(match.group(1))
+                if next_page > current_page:
+                    return next_page
+        return None
 
     def __aiter__(self):
         """Make paginator iterable"""
